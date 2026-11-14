@@ -44,7 +44,7 @@ Notifications.setNotificationHandler({
 // CONFIGURATION
 // ==========================================
 
-const WEBSITE_URL = "https://zeriy.vercel.app";
+const WEBSITE_URL = "https://zeriy-owner.vercel.app";
 const MOBILE_LOGIN_URL = `${WEBSITE_URL}/mobile-login`;
 
 const AUTH_CALLBACK_URL = Linking.createURL("auth/callback");
