@@ -1,11 +1,12 @@
 {
   "expo": {
     "name": "Zeriy Owner",
-    "slug": "zeriy-owner-mobile",
+    "slug": "zeriy-owner",
     "version": "1.0.0",
+      "owner": "samiruraons-team",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "zeriyownermobile",
+    "scheme": "zeriy-owner",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
@@ -37,7 +38,7 @@
           ],
           "data": [
             {
-              "scheme": "zeriyownermobile",
+              "scheme": "zeriy-owner",
               "host": "auth",
               "pathPrefix": "/callback"
             }
@@ -51,14 +52,7 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#080824",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 350
-        }
-      ],
+      
       [
         "expo-location",
         {
@@ -79,9 +73,9 @@
         }
       },
       "eas": {
-        "projectId": "98602a59-9b81-47c8-9331-c32ba86783b3"
+        "projectId": "9eb08d96-d936-48b7-90f3-7faa6caa5f86"
       }
-    },
-    "owner": "zeriy2026s-team"
+    }
+  
   }
 }

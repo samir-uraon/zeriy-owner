@@ -1,3 +1,4 @@
+
 import * as Location from "expo-location";
 import React, {
   useState,
@@ -23,42 +24,54 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams } from "expo-router";
+import * as Notifications from "expo-notifications";
+
+import { registerForPushNotifications } from "../../lib/notifications";
 
 WebBrowser.maybeCompleteAuthSession();
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // ==========================================
 // CONFIGURATION
 // ==========================================
 
-const WEBSITE_URL = "https://zeriy-owner.vercel.app";
+const WEBSITE_URL = "https://zeriy.vercel.app";
 const MOBILE_LOGIN_URL = `${WEBSITE_URL}/mobile-login`;
 
-// FIX 1: build the callback URL with Linking.createURL so it is exactly
-// "zeriyownermobile://auth/callback" (two slashes) and matches the server redirect.
 const AUTH_CALLBACK_URL = Linking.createURL("auth/callback");
 
 const PRIMARY_COLOR = "#6C3CE9";
 const SPLASH_BACKGROUND = "#080824";
 
-// Persistent across re-renders/navigations to prevent duplicate exchanges
 const processedCodes = new Set();
 
 // ==========================================
-// EXTERNAL LINKS (Google Maps, tel:, etc.)
+// EXTERNAL LINKS
 // ==========================================
 
-// Google Maps web links (but NOT embedded map iframes)
 const isMapsUrl = (url) =>
   (/^https?:\/\/(www\.)?google\.[a-z.]+\/maps/i.test(url) ||
     /^https?:\/\/maps\.google\.[a-z.]+/i.test(url) ||
     /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(url)) &&
   !/\/maps\/embed/i.test(url);
 
-// Turns intent://maps.google.com/...#Intent;scheme=https;... into https://maps.google.com/...
 const intentToHttps = (url) => {
   const m = url.match(/^intent:\/\/(.*?)#Intent;(.*)$/i);
+
   if (!m) return null;
-  const scheme = (m[2].match(/scheme=([^;]+)/) || [])[1] || "https";
+
+  const scheme =
+    (m[2].match(/scheme=([^;]+)/) || [])[1] || "https";
+
   return `${scheme}://${m[1]}`;
 };
 
@@ -71,9 +84,13 @@ const openExternal = async (rawUrl) => {
 
   try {
     await Linking.openURL(url);
-  } catch (e) {
-    console.log("Could not open external URL:", url, e);
-    Alert.alert("Unable to open", "No app was found to open this link.");
+  } catch (error) {
+    console.log("Could not open external URL:", url, error);
+
+    Alert.alert(
+      "Unable to open",
+      "No app was found to open this link."
+    );
   }
 };
 
@@ -86,8 +103,9 @@ export default function HomeScreen() {
   const [canGoBack, setCanGoBack] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // FIX 2: control the WebView through state instead of injectJavaScript
-  const [source, setSource] = useState({ uri: WEBSITE_URL });
+  const [source, setSource] = useState({
+    uri: WEBSITE_URL,
+  });
 
   const routeParams = useLocalSearchParams();
 
@@ -96,6 +114,7 @@ export default function HomeScreen() {
 
   const splashHidden = useRef(false);
   const splashTimer = useRef(null);
+
   const loginInProgress = useRef(false);
   const exchangeInProgress = useRef(false);
   const exchangeTimer = useRef(null);
@@ -131,8 +150,10 @@ export default function HomeScreen() {
     }
 
     processedCodes.add(code);
+
     exchangeInProgress.current = true;
     exchangeNavigationSeen.current = false;
+
     setAuthLoading(true);
 
     const exchangeUrl =
@@ -143,11 +164,11 @@ export default function HomeScreen() {
       clearTimeout(exchangeTimer.current);
     }
 
-    // Timeout protection
     exchangeTimer.current = setTimeout(() => {
       if (exchangeInProgress.current) {
         exchangeInProgress.current = false;
         exchangeNavigationSeen.current = false;
+
         setAuthLoading(false);
 
         Alert.alert(
@@ -157,44 +178,61 @@ export default function HomeScreen() {
       }
     }, 30000);
 
-    // FIX 2: load the exchange URL by changing the WebView source.
-    // The server sets the NextAuth session cookie inside the WebView
-    // and redirects to the website.
-    setSource({ uri: exchangeUrl });
+    setSource({
+      uri: exchangeUrl,
+    });
   }, []);
 
-  // Check incoming route params (e.g. from /auth/callback redirect)
+  // ==========================================
+  // ROUTE PARAMS
+  // ==========================================
+
   useEffect(() => {
     const code = routeParams?.code || routeParams?.auth_code;
+
     if (code) {
       performSessionExchange(String(code));
     }
   }, [routeParams, performSessionExchange]);
 
-  // Check incoming deep links via Linking event
+  // ==========================================
+  // DEEP LINKS
+  // ==========================================
+
   useEffect(() => {
     const handleUrlEvent = (event) => {
       if (!event?.url) return;
 
       try {
         const parsed = Linking.parse(event.url);
+
         const code =
-          parsed.queryParams?.code || parsed.queryParams?.auth_code;
+          parsed.queryParams?.code ||
+          parsed.queryParams?.auth_code;
+
         if (code) {
           performSessionExchange(String(code));
           return;
         }
-      } catch (e) {
-        // ignore parse error
+      } catch (error) {
+        console.log("Deep link parse error:", error);
       }
 
-      const match = event.url.match(/[?&](?:code|auth_code)=([^&]+)/);
-      if (match && match[1]) {
-        performSessionExchange(decodeURIComponent(match[1]));
+      const match = event.url.match(
+        /[?&](?:code|auth_code)=([^&]+)/
+      );
+
+      if (match?.[1]) {
+        performSessionExchange(
+          decodeURIComponent(match[1])
+        );
       }
     };
 
-    const subscription = Linking.addEventListener("url", handleUrlEvent);
+    const subscription = Linking.addEventListener(
+      "url",
+      handleUrlEvent
+    );
 
     Linking.getInitialURL().then((url) => {
       if (url) {
@@ -210,7 +248,10 @@ export default function HomeScreen() {
   // ==========================================
 
   const handleGoogleLogin = useCallback(async () => {
-    if (loginInProgress.current || exchangeInProgress.current) {
+    if (
+      loginInProgress.current ||
+      exchangeInProgress.current
+    ) {
       return;
     }
 
@@ -228,14 +269,20 @@ export default function HomeScreen() {
 
         try {
           const parsed = Linking.parse(result.url);
-          code = parsed.queryParams?.code || parsed.queryParams?.auth_code;
-        } catch (e) {
-          // ignore
+
+          code =
+            parsed.queryParams?.code ||
+            parsed.queryParams?.auth_code;
+        } catch (error) {
+          console.log("Login URL parse error:", error);
         }
 
         if (!code) {
-          const match = result.url.match(/[?&](?:code|auth_code)=([^&]+)/);
-          if (match && match[1]) {
+          const match = result.url.match(
+            /[?&](?:code|auth_code)=([^&]+)/
+          );
+
+          if (match?.[1]) {
             code = decodeURIComponent(match[1]);
           }
         }
@@ -249,6 +296,7 @@ export default function HomeScreen() {
 
       if (!exchangeInProgress.current) {
         setAuthLoading(false);
+
         Alert.alert(
           "Login failed",
           error.message || "Unable to login."
@@ -257,7 +305,6 @@ export default function HomeScreen() {
     } finally {
       loginInProgress.current = false;
 
-      // Keep auth overlay active if exchange was triggered
       setTimeout(() => {
         if (!exchangeInProgress.current) {
           setAuthLoading(false);
@@ -267,106 +314,188 @@ export default function HomeScreen() {
   }, [performSessionExchange]);
 
   // ==========================================
-  // SHOP LOCATION (asked ONLY when the website requests it,
-  // i.e. once, during account creation)
+  // SEND LOCATION RESULT TO WEBSITE
   // ==========================================
 
-  const sendLocationToWeb = useCallback((payload) => {
+  const sendLocationResult = useCallback((payload) => {
     webViewRef.current?.injectJavaScript(`
-      (function () {
-        var d = ${JSON.stringify(payload)};
-        window.__ZERIY_LOCATION__ = d;
-        window.dispatchEvent(new CustomEvent("zeriyLocation", { detail: d }));
-      })();
+      window.dispatchEvent(
+        new CustomEvent("zeriy:native-location", {
+          detail: ${JSON.stringify(payload)}
+        })
+      );
       true;
     `);
   }, []);
 
-  const requestShopLocation = useCallback(async () => {
-    try {
-      let perm = await Location.getForegroundPermissionsAsync();
-
-      if (perm.status !== "granted") {
-        perm = await Location.requestForegroundPermissionsAsync();
-      }
-
-      if (perm.status !== "granted") {
-        sendLocationToWeb({ granted: false, canAskAgain: perm.canAskAgain });
-        return;
-      }
-
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      sendLocationToWeb({
-        granted: true,
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-      });
-    } catch (e) {
-      // e.g. GPS switched off on the phone
-      sendLocationToWeb({ granted: false, error: String(e?.message || e) });
-    }
-  }, [sendLocationToWeb]);
-
   // ==========================================
-  // WEBSITE MESSAGE
+  // WEBSITE MESSAGE HANDLER
   // ==========================================
 
   const handleWebViewMessage = useCallback(
-    (event) => {
-      const data = event.nativeEvent.data;
+    async (event) => {
+      const message = event.nativeEvent.data;
 
-      if (data === "ZERIY_GOOGLE_LOGIN") {
+      // GOOGLE LOGIN
+      if (message === "ZERIY_GOOGLE_LOGIN") {
         handleGoogleLogin();
-      } else if (data === "ZERIY_REQUEST_LOCATION") {
-        requestShopLocation();
-      } else if (data === "ZERIY_OPEN_SETTINGS") {
-        Linking.openSettings();
+        return;
+      }
+
+      // PUSH NOTIFICATION REGISTRATION
+      if (message === "ZERIY_REGISTER_PUSH") {
+        try {
+          const token = await registerForPushNotifications();
+
+          if (!token) {
+            throw new Error(
+              "Unable to generate Expo push token."
+            );
+          }
+
+          webViewRef.current?.injectJavaScript(`
+            window.dispatchEvent(
+              new CustomEvent("ZERIY_PUSH_TOKEN", {
+                detail: ${JSON.stringify(token)}
+              })
+            );
+            true;
+          `);
+        } catch (error) {
+          console.error("Push registration error:", error);
+
+          webViewRef.current?.injectJavaScript(`
+            window.dispatchEvent(
+              new CustomEvent("ZERIY_PUSH_ERROR", {
+                detail: ${JSON.stringify(
+                  error.message || "Push registration failed"
+                )}
+              })
+            );
+            true;
+          `);
+        }
+
+        return;
+      }
+
+      // LOCATION REQUEST
+      let payload;
+
+      try {
+        payload = JSON.parse(message);
+      } catch {
+        return;
+      }
+
+      if (
+        payload?.type !== "ZERIY_GET_CURRENT_LOCATION"
+      ) {
+        return;
+      }
+
+      try {
+        let permission =
+          await Location.getForegroundPermissionsAsync();
+
+        if (permission.status !== "granted") {
+          permission =
+            await Location.requestForegroundPermissionsAsync();
+        }
+
+        if (permission.status !== "granted") {
+          sendLocationResult({
+            requestId: payload.requestId,
+            success: false,
+            error: "Location permission was not granted.",
+          });
+
+          return;
+        }
+
+        const servicesEnabled =
+          await Location.hasServicesEnabledAsync();
+
+        if (!servicesEnabled) {
+          sendLocationResult({
+            requestId: payload.requestId,
+            success: false,
+            error: "Please turn on GPS/location services.",
+          });
+
+          return;
+        }
+
+        const position =
+          await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+
+        sendLocationResult({
+          requestId: payload.requestId,
+          success: true,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+      } catch (error) {
+        console.error("Native location error:", error);
+
+        sendLocationResult({
+          requestId: payload.requestId,
+          success: false,
+          error:
+            error.message ||
+            "Unable to get current location.",
+        });
       }
     },
-    [handleGoogleLogin, requestShopLocation]
+    [handleGoogleLogin, sendLocationResult]
   );
 
   // ==========================================
-  // INTERCEPT WEBVIEW NAVIGATION TO GOOGLE
+  // WEBVIEW NAVIGATION
   // ==========================================
 
   const handleShouldStartLoadWithRequest = useCallback(
     (request) => {
       const { url } = request;
 
-      // Embedded content (iframes) always stays inside the page
+      // Keep iframe content inside the WebView
       if (request.isTopFrame === false) {
         return true;
       }
 
-      // Always allow the mobile auth exchange endpoint
+      // Allow mobile authentication exchange
       if (url.includes("mobile-auth/exchange")) {
         return true;
       }
 
-      // Non-web links: geo:, google.navigation:, intent:, tel:, mailto:, whatsapp: ...
+      // Handle external schemes
       if (!/^https?:\/\//i.test(url)) {
-        if (/^(about:|data:|blob:|javascript:)/i.test(url)) {
+        if (
+          /^(about:|data:|blob:|javascript:)/i.test(url)
+        ) {
           return true;
         }
+
         openExternal(url);
         return false;
       }
 
-      // Google Maps / Get Directions -> open the Google Maps app
+      // Google Maps
       if (isMapsUrl(url)) {
         openExternal(url);
         return false;
       }
 
-      // Intercept Google OAuth or mobile-login navigations inside the WebView
+      // Google OAuth
       if (
         url.includes("accounts.google.com") ||
-        (url.startsWith(WEBSITE_URL) && url.includes("/mobile-login"))
+        (
+          url.startsWith(WEBSITE_URL) &&
+          url.includes("/mobile-login")
+        )
       ) {
         handleGoogleLogin();
         return false;
@@ -385,16 +514,23 @@ export default function HomeScreen() {
     setCanGoBack(navState.canGoBack);
 
     const url = navState.url || "";
-    const isExchangeUrl = url.includes("mobile-auth/exchange");
 
-    if (exchangeInProgress.current && isExchangeUrl) {
+    const isExchangeUrl =
+      url.includes("mobile-auth/exchange");
+
+    if (
+      exchangeInProgress.current &&
+      isExchangeUrl
+    ) {
       exchangeNavigationSeen.current = true;
     }
 
-    // When the exchange finishes and redirects to the website
     if (
       exchangeInProgress.current &&
-      (exchangeNavigationSeen.current || !isExchangeUrl) &&
+      (
+        exchangeNavigationSeen.current ||
+        !isExchangeUrl
+      ) &&
       url.startsWith(WEBSITE_URL) &&
       !isExchangeUrl
     ) {
@@ -432,6 +568,8 @@ export default function HomeScreen() {
     (event) => {
       console.log("WebView error:", event.nativeEvent);
 
+      hideSplash();
+
       if (exchangeInProgress.current) {
         exchangeInProgress.current = false;
         exchangeNavigationSeen.current = false;
@@ -447,8 +585,6 @@ export default function HomeScreen() {
           "Login failed",
           "Unable to establish your session."
         );
-      } else {
-        hideSplash();
       }
     },
     [hideSplash]
@@ -485,6 +621,49 @@ export default function HomeScreen() {
   }, []);
 
   // ==========================================
+  // PUSH NOTIFICATION TAP
+  // ==========================================
+
+  useEffect(() => {
+    const handleNotificationTap = (response) => {
+      const data =
+        response.notification.request.content.data;
+
+      const notificationUrl = data?.url;
+
+      // Only allow relative website paths
+      if (
+        typeof notificationUrl !== "string" ||
+        !notificationUrl.startsWith("/") ||
+        notificationUrl.startsWith("//")
+      ) {
+        return;
+      }
+
+      setSource({
+        uri: `${WEBSITE_URL}${notificationUrl}`,
+      });
+    };
+
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(
+        handleNotificationTap
+      );
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handleNotificationTap(response);
+        }
+      })
+      .catch((error) => {
+        console.log("Notification response error:", error);
+      });
+
+    return () => subscription.remove();
+  }, []);
+
+  // ==========================================
   // ANDROID BACK BUTTON
   // ==========================================
 
@@ -507,7 +686,6 @@ export default function HomeScreen() {
 
     return () => handler.remove();
   }, [canGoBack, showSplash]);
-
 
   // ==========================================
   // CLEANUP
@@ -537,27 +715,43 @@ export default function HomeScreen() {
         translucent={false}
       />
 
-      <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={["top"]}
+      >
         <WebView
           ref={webViewRef}
           source={source}
           style={styles.webview}
+
           javaScriptEnabled={true}
           domStorageEnabled={true}
+
           sharedCookiesEnabled={true}
           thirdPartyCookiesEnabled={true}
+
           allowsBackForwardNavigationGestures={true}
           setSupportMultipleWindows={false}
+
           originWhitelist={["*"]}
           mixedContentMode="never"
           cacheEnabled={true}
+
           onMessage={handleWebViewMessage}
-          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-          onNavigationStateChange={handleNavigationChange}
+
+          onShouldStartLoadWithRequest={
+            handleShouldStartLoadWithRequest
+          }
+
+          onNavigationStateChange={
+            handleNavigationChange
+          }
+
           onLoadEnd={handleLoadEnd}
           onError={handleWebViewError}
           onHttpError={handleHttpError}
-          geolocationEnabled={false}
+
+          geolocationEnabled={true}
         />
       </SafeAreaView>
 
@@ -565,7 +759,10 @@ export default function HomeScreen() {
 
       {authLoading && (
         <View style={styles.authOverlay}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
+          <ActivityIndicator
+            size="large"
+            color="#FFFFFF"
+          />
 
           <Text style={styles.authText}>
             Completing your Zeriy login...
@@ -573,11 +770,14 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* SPLASH */}
+      {/* SPLASH SCREEN */}
 
       {showSplash && (
         <Animated.View
-          style={[styles.splashScreen, { opacity: fadeAnim }]}
+          style={[
+            styles.splashScreen,
+            { opacity: fadeAnim },
+          ]}
         >
           <Image
             source={require("@/assets/images/icon.png")}
@@ -585,7 +785,9 @@ export default function HomeScreen() {
             resizeMode="contain"
           />
 
-          <Text style={styles.tagline}>Made Simple Much Faster</Text>
+          <Text style={styles.tagline}>
+            Made Simple Much Faster
+          </Text>
 
           <ActivityIndicator
             size="small"
@@ -624,9 +826,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+
     backgroundColor: SPLASH_BACKGROUND,
+
     justifyContent: "center",
     alignItems: "center",
+
     zIndex: 9999,
     elevation: 9999,
   },
