@@ -755,20 +755,7 @@ export default function HomeScreen() {
         />
       </SafeAreaView>
 
-      {/* AUTH LOADING */}
-
-      {authLoading && (
-        <View style={styles.authOverlay}>
-          <ActivityIndicator
-            size="large"
-            color="#FFFFFF"
-          />
-
-          <Text style={styles.authText}>
-            Completing your Zeriy login...
-          </Text>
-        </View>
-      )}
+      
 
       {/* SPLASH SCREEN */}
 
@@ -855,19 +842,5 @@ const styles = StyleSheet.create({
     marginTop: 25,
   },
 
-  authOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(8, 8, 36, 0.65)",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-    elevation: 100,
-  },
 
-  authText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
-    marginTop: 12,
-  },
 });
